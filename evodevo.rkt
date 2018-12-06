@@ -3,18 +3,21 @@
 (require furtle)
 (require furtle/when)
 
-(define DEBUG #t)
+(define DEBUG #f)
+(define MAXDEPTH 16)
 
-(define (ftree len a1 a2 d1 d2)
-  (turtle-when (> len 1)
+(define (ftree len a1 a2 d1 d2 level)
+  (when DEBUG
+    (displayln (format "ftree level: ~a~%" level)))
+  (turtle-when (and (< level MAXDEPTH) (> len 1))
                (save)
                (forward len)
                (save)
                (right a1)
-               (ftree (- len (abs (if (= d1 0) 1 d1))) a1 a2 d1 d2)
+               (ftree (- len (abs (if (= d1 0) 1 d1))) a1 a2 d1 d2 (+ level 1))
                (restore)
                (left a2)
-               (ftree (- len (abs (if (= d2 0) 1 d2))) a1 a2 d1 d2)
+               (ftree (- len (abs (if (= d2 0) 1 d2))) a1 a2 d1 d2 (+ level 1))
                (restore)))
 
 (define (tiny-variation-of x max-dx)
@@ -33,6 +36,7 @@
 (define serial-drawer% (class object%
                          [init-field [samples '()]]
                          [field (samples-vec (apply vector samples))
+                                (config-vec (make-vector (vector-length samples-vec)))
                                 (index 0)]
                          (define/public (sample-list)
                            samples)
@@ -40,19 +44,38 @@
                            (if (and (>= index 0)
                                     (< index (vector-length samples-vec)))
                                (let* ([config (vector-ref samples-vec index)]
-                                      [drawing (draw (apply ftree config)
+                                      [drawing (draw (apply ftree (append config '(0)))
                                                      #:width 200
                                                      #:height 200)])
                                  (when DEBUG
                                    (displayln (format "index=~a, sample=~a~%"
                                                       index
                                                       config)))
+                                 (vector-set! config-vec index config)
                                  (set! index (+ index 1))
                                  (list (- index 1) config drawing))
                                #f))
-                         (define/public (new-setup)
-                           (if (<= index (vector-length samples-vec))
-                               (setup-drawer (vector-ref samples-vec (- index 1)))
+                         (define/public (new-setup #:number [number (- 1)])
+                           (cond
+                             ((= number (- 1))
+                              (if (<= index (vector-length samples-vec))
+                                  (setup-drawer (vector-ref samples-vec (- index 1)))
+                                  #f))
+                               (else
+                                (if (and (>= number 0) (< number (vector-length config-vec)))
+                                    (setup-drawer (vector-ref config-vec number))
+                                    #f))))
+                         (define/public (reset-with! number
+                                                     #:sample-size [sample-size 10]
+                                                     #:variation-limit [variation-limit '(10 90 90 3 4)])
+                           (if (and (>= number 0) (< number (vector-length config-vec)))
+                               (begin
+                                 (set! samples (gen-samples (vector-ref config-vec number)
+                                                            sample-size
+                                                            variation-limit))
+                                 (set! samples-vec (apply vector samples))
+                                 (set! config-vec (make-vector (vector-length samples-vec)))
+                                 (set! index 0))
                                #f))
                          (super-new)))
 
